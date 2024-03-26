@@ -1,0 +1,3 @@
+// Run mongo shell command to list databases
+
+mongo --quiet --eval "db.adminCommand('listDatabases')" | grep -oP '"name" : "\K([^"]+)'
