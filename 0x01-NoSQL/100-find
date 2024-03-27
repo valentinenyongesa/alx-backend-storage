@@ -1,0 +1,21 @@
+// MongoDB script to list all documents with name starting by Holberton in the collection school
+
+// Check if database name is provided as argument
+if (typeof args[0] !== 'string' || args.length !== 1) {
+    print("Usage: mongo <database_name> --quiet 100-find.js");
+    quit();
+}
+
+// Extract database name from arguments
+var database_name = args[0];
+
+// Connect to the specified database
+var db = db.getSiblingDB(database_name);
+
+// Find documents in the school collection where the name starts with "Holberton"
+var cursor = db.school.find({ "name": /^Holberton/i });
+
+// Iterate over the cursor and print each document
+while (cursor.hasNext()) {
+    printjson(cursor.next());
+}
