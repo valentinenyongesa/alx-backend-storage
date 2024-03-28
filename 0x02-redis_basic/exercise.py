@@ -6,12 +6,11 @@ Main file
 
 import redis
 import uuid
-from functools import wraps
-from typing import Callable, Union
+from typing import Callable
 
-def count_calls(method: Callable) -> Callable:
+def call_history(method: Callable) -> Callable:
     """
-    Decorator to count how many times a method of the Cache class is called.
+    Decorator to store the history of inputs and outputs for a particular function.
 
     Args:
         method (Callable): The method to be decorated.
@@ -19,22 +18,27 @@ def count_calls(method: Callable) -> Callable:
     Returns:
         Callable: The decorated method.
     """
-    @wraps(method)
     def wrapper(self, *args, **kwargs):
         """
-        Wrapper function to count method calls and call the original method.
+        Wrapper function to store input and output history in Redis.
 
         Args:
             self: The instance of the Cache class.
             *args: Positional arguments passed to the method.
-            **kwargs: Keyword arguments passed to the method.
 
         Returns:
             The result of the original method.
         """
-        key = method.__qualname__
-        self._redis.incr(key)
-        return method(self, *args, **kwargs)
+        input_key = "{}:inputs".format(method.__qualname__)
+        output_key = "{}:outputs".format(method.__qualname__)
+        input_data = str(args)
+        
+        self._redis.rpush(input_key, input_data)
+        
+        output_data = method(self, *args, **kwargs)
+        self._redis.rpush(output_key, output_data)
+        
+        return output_data
     
     return wrapper
 
@@ -50,13 +54,13 @@ class Cache:
         self._redis = redis.Redis()
         self._redis.flushdb()
 
-    @count_calls
-    def store(self, data: Union[str, bytes, int, float]) -> str:
+    @call_history
+    def store(self, data: str) -> str:
         """
         Store the input data in Redis using a randomly generated key and return the key.
 
         Args:
-            data (Union[str, bytes, int, float]): The data to store in Redis.
+            data (str): The data to store in Redis.
 
         Returns:
             str: The randomly generated key used to store the data in Redis.
@@ -65,54 +69,18 @@ class Cache:
         self._redis.set(key, data)
         return key
 
-    def get(self, key: str, fn: Callable = None) -> Union[str, bytes, int, float, None]:
-        """
-        Retrieve data from Redis for the given key. Optionally, apply a conversion function.
-
-        Args:
-            key (str): The key to retrieve data from Redis.
-            fn (Callable, optional): A callable function to convert the retrieved data.
-
-        Returns:
-            Union[str, bytes, int, float, None]: The retrieved data from Redis.
-        """
-        data = self._redis.get(key)
-        if data is None:
-            return None
-        if fn is not None:
-            return fn(data)
-        return data
-
-    def get_str(self, key: str) -> Union[str, None]:
-        """
-        Retrieve data from Redis for the given key and convert it to a UTF-8 encoded string.
-
-        Args:
-            key (str): The key to retrieve data from Redis.
-
-        Returns:
-            Union[str, None]: The retrieved data as a UTF-8 encoded string.
-        """
-        return self.get(key, fn=lambda d: d.decode("utf-8"))
-
-    def get_int(self, key: str) -> Union[int, None]:
-        """
-        Retrieve data from Redis for the given key and convert it to an integer.
-
-        Args:
-            key (str): The key to retrieve data from Redis.
-
-        Returns:
-            Union[int, None]: The retrieved data as an integer.
-        """
-        return self.get(key, fn=int)
-
 if __name__ == "__main__":
     cache = Cache()
 
-    cache.store(b"first")
-    print(cache.get(cache.store.__qualname__))
+    s1 = cache.store("first")
+    print(s1)
+    s2 = cache.store("second")
+    print(s2)
+    s3 = cache.store("third")
+    print(s3)
 
-    cache.store(b"second")
-    cache.store(b"third")
-    print(cache.get(cache.store.__qualname__))
+    inputs = cache._redis.lrange("{}:inputs".format(cache.store.__qualname__), 0, -1)
+    outputs = cache._redis.lrange("{}:outputs".format(cache.store.__qualname__), 0, -1)
+
+    print("inputs: {}".format(inputs))
+    print("outputs: {}".format(outputs))
